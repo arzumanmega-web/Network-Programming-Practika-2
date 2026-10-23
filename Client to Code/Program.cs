@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -6,7 +7,6 @@ namespace Praktika_Server
 {
     internal class Program
     {
-
         static void Main(string[] args)
         {
             Console.WriteLine("==================== CLIENT ===================");
@@ -25,96 +25,101 @@ namespace Praktika_Server
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("Server to connect..");
                     Console.ResetColor();
-                    var writerr = Task.Run(() =>
+
+                    var stream = server.GetStream();
+                    var writer = new BinaryWriter(stream);
+                    var reader = new BinaryReader(stream);
+
+                    bool afterwhile = false;
+
+                    while (!afterwhile)
                     {
-                        var afterwhile = false;
+                        Console.Write("1.New user\n2.Login\n0.exit\nEnter choice: ");
+                        var choice = Console.ReadLine();
+                        writer.Write(choice!);
 
-                        while (true)
+                        if (choice == "0")
                         {
-                            Console.Write("1.New user\n2.Login\n0.exit\nEnter choice: ");
-                            var choice = Console.ReadLine();
-                            var stream = server.GetStream();
-                            var writer42 = new BinaryWriter(stream);
-                            writer42.Write(choice);
-                            if (choice == "0")
-                            {
+                            break;
+                        }
+                        if (choice == "1")
+                        {
+                            Console.Write("Enter username: ");
+                            var username = Console.ReadLine();
 
+                            Console.Write("Enter password: ");
+                            var password = Console.ReadLine();
+
+                            writer.Write(username!);
+                            writer.Write(password!);
+
+                            var result = reader.ReadString();
+                            Console.WriteLine(result);
+                        }
+                        else if (choice == "2")
+                        {
+                            Console.Write("Enter username: ");
+                            var username = Console.ReadLine();
+
+                            Console.Write("Enter password: ");
+                            var password = Console.ReadLine();
+
+                            writer.Write(username!);
+                            writer.Write(password!);
+
+                            var result = reader.ReadString();
+                            Console.ForegroundColor = ConsoleColor.Blue;
+                            Console.WriteLine(result);
+                            Console.ResetColor();
+
+                            var result2 = reader.ReadString();
+                            if (result2 == "break")
+                            {
+                                afterwhile = true;
                                 break;
                             }
-                            if (choice == "1")
+                        }
+                    }
+
+                    if (afterwhile)
+                    {
+
+                        Task.Run(() =>
+                        {
+                            try
                             {
-                                Console.Write("Enter username: ");
-                                var username = Console.ReadLine();
-
-                                Console.Write("Enter password: ");
-                                var password = Console.ReadLine();
-
-                                var stream1 = server.GetStream();
-                                var writer = new BinaryWriter(stream1);
-                                writer.Write(username);
-
-                                var stream2 = server.GetStream();
-                                var writer2 = new BinaryWriter(stream2);
-                                writer2.Write(password);
-
-                                var stream3 = server.GetStream();
-                                var writer3 = new BinaryReader(stream3);
-                                var result = writer3.ReadString();
-                                Console.WriteLine(result);
-                            }
-                            else if (choice == "2")
-                            {
-                                Console.Write("Enter username: ");
-                                var username = Console.ReadLine();
-                                var stream1 = server.GetStream();
-                                var writer = new BinaryWriter(stream1);
-                                writer.Write(username);
-
-                                Console.Write("Enter password: ");
-                                var password = Console.ReadLine();
-                                var stream2 = server.GetStream();
-                                var writer2 = new BinaryWriter(stream2);
-                                writer2.Write(password);
-
-                                var stream3 = server.GetStream();
-                                var writer3 = new BinaryReader(stream3);
-                                var result = writer3.ReadString();
-                                Console.ForegroundColor = ConsoleColor.Blue;
-                                Console.WriteLine(result);
-                                Console.ResetColor();
-
-                                var stream4 = server.GetStream();
-                                var writer4 = new BinaryReader(stream4);
-                                var result2 = writer3.ReadString();
-                                if (result2 == "break")
+                                while (server.Connected)
                                 {
-                                    afterwhile = true;
-                                    break;
+                                    var incomingMsg = reader.ReadString();
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    Console.WriteLine(incomingMsg);
+                                    Console.ResetColor();
                                 }
                             }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex.Message);
+                            }
+                        });
 
-                        }
 
-                        while (afterwhile)
+                        while (server.Connected)
                         {
                             Console.Write("Enter message: ");
                             Console.ForegroundColor = ConsoleColor.Yellow;
                             var message = Console.ReadLine();
                             Console.ResetColor();
-                            var stream1 = server.GetStream();
-                            var writer = new BinaryWriter(stream1);
+
+                            if (string.IsNullOrEmpty(message)) continue;
+
                             writer.Write(message);
+
                             if (message.Trim() == "exit")
                             {
                                 break;
                             }
                         }
-
-
-
-                    });
-
-                    Task.WaitAll(writerr);
+                    }
                 }
             }
             catch (Exception ex)
@@ -123,15 +128,10 @@ namespace Praktika_Server
                 Console.WriteLine(ex.Message);
                 Console.ResetColor();
             }
-            
-
-
-
-
-
-
-
-
+            finally
+            {
+                server.Close();
+            }
         }
     }
 }

@@ -1,20 +1,21 @@
-﻿using System.Linq;
+﻿using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.ConstrainedExecution;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
+
 namespace Client
 {
-
     public class User
     {
+        public string? LastUserIP { get; set; }
+        public string? LastServerIP { get; set; }
         public string? UserName { get; set; }
         public string? Password { get; set; }
         public bool IsOnline { get; set; } = false;
-
     }
 
     public class Users
@@ -29,20 +30,21 @@ namespace Client
                 {
                     if (user.UserName == username)
                     {
-
                         return "Bu username artiq istifade olunub...";
                     }
                 }
             }
             var new_user = new User() { UserName = username, Password = password };
             users.Add(new_user);
+            Console.ForegroundColor = ConsoleColor.DarkBlue;
+            Console.WriteLine($"Yeni istifadeci {username} qeydiyyatdan kecdi...");
+            Console.ResetColor();
             return "Hesab ugurla elave edildi...";
-
         }
+
         public User Login(string username, string password)
         {
             if (users.Count == 0) throw new Exception("Not user login...");
-
 
             foreach (var user in users)
             {
@@ -56,17 +58,14 @@ namespace Client
                     return user;
                 }
             }
-
             throw new Exception("Wrong username and password...");
-
         }
     }
+
     internal class Program
     {
-        static void JsonSerializer(Users users)
+        static void JsonSerializerUsers(Users users)
         {
-            var jsl = new JsonSerializerSettings();
-            jsl.TypeNameHandling = TypeNameHandling.All;
             var js = new JsonSerializer();
             using (var sw = new StreamWriter("users.json"))
             {
@@ -77,11 +76,12 @@ namespace Client
                 }
             }
         }
-        static Users JsonDeserializer()
+
+        static Users JsonDeserializerUsers()
         {
-            var jsl = new JsonSerializerSettings();
-            jsl.TypeNameHandling = TypeNameHandling.All;
-            Users users = null;
+            if (!File.Exists("users.json")) return new Users();
+
+            Users? users = null;
             var js = new JsonSerializer();
 
             using (var sr = new StreamReader("users.json"))
@@ -91,17 +91,17 @@ namespace Client
                     users = js.Deserialize<Users>(jr);
                 }
             }
-            return users;
+            return users ?? new Users();
         }
 
-
         static TcpListener? listener;
-        static BinaryWriter? writer;
-        static BinaryReader? reader;
         static List<TcpClient> tcpClients = new List<TcpClient>();
+
         static async Task Main(string[] args)
         {
-            Users users = JsonDeserializer();
+            
+            Users users = JsonDeserializerUsers();
+
             Console.WriteLine("==================== SERVER ===================");
             var ip = IPAddress.Parse("192.168.1.82");
             var port = 27001;
@@ -115,127 +115,129 @@ namespace Client
             {
                 var client = await listener.AcceptTcpClientAsync();
                 tcpClients.Add(client);
+
                 _ = Task.Run(() =>
                 {
-                    //qebul edib cap edir
-                    var read = Task.Run(() =>
-                    {
-                        User? user = null;
+                    User? user = null;
+                    var stream = client.GetStream();
+                    var reader = new BinaryReader(stream);
+                    var writer = new BinaryWriter(stream);
 
+                    try
+                    {
                         while (true)
                         {
-                            var stream = client.GetStream();
-                            reader = new BinaryReader(stream);
                             var choice = reader.ReadString();
 
-                            if (choice == "0")  break; 
+                            if (choice == "0") break;
 
                             if (choice == "1")
                             {
-                                
-                                var stream2 = client.GetStream();
-                                reader = new BinaryReader(stream2);
-                                var username = reader.ReadString();//axin gelen
-                                Console.WriteLine(username);
-                                var stream3 = client.GetStream();
-                                reader = new BinaryReader(stream3);
-                                var password = reader.ReadString();//axin gelen
-                                Console.WriteLine(password);
-
+                                var username = reader.ReadString();
+                                var password = reader.ReadString();
                                 var result = users.AddUser(username, password);
-                                var stream4 = client.GetStream();
-                                writer = new BinaryWriter(stream);
-                                writer.Write(result);//axin geden
 
-                                JsonSerializer(users);
-
+                                writer.Write(result);
+                                JsonSerializerUsers(users);
                             }
                             else if (choice == "2")
                             {
-                                var stream1 = client.GetStream();
-                                reader = new BinaryReader(stream1);
                                 var username = reader.ReadString();
-
-                                var stream2 = client.GetStream();
-                                reader = new BinaryReader(stream2);
                                 var password = reader.ReadString();
                                 try
                                 {
                                     user = users.Login(username, password);
                                     if (user.IsOnline)
                                     {
-                                        var stream3 = client.GetStream();
-                                        writer = new BinaryWriter(stream3);
-                                        writer.Write($"Salam {user.UserName} xos gelmisiniz...");//axin geden
-
-                                        var stream4 = client.GetStream();
-                                        writer = new BinaryWriter(stream4);
+                                        writer.Write($"Salam {user.UserName} xos gelmisiniz...");
                                         writer.Write("break");
 
-                                        break;
+                                        user.LastUserIP = client?.Client.RemoteEndPoint?.ToString();
+                                        user.LastServerIP = client?.Client?.LocalEndPoint?.ToString();
+
+                                        JsonSerializerUsers(users);
+                                        break; 
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    var stream4 = client.GetStream();
-                                    writer = new BinaryWriter(stream4);
-                                    writer.Write(ex.Message);//axin geden
-
-                                    var stream5 = client.GetStream();
-                                    writer = new BinaryWriter(stream5);
-                                    writer.Write("");
+                                    writer.Write(ex.Message);
+                                    writer.Write("error"); 
                                 }
                             }
                         }
-                        try
-                        {
-                            if (user !=null)
-                            {
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"Client {user.UserName} connected: {client.Client.RemoteEndPoint}");
-                                Console.WriteLine($"{user.UserName} -- {((user.IsOnline) ? "Online" : "Ofline")}");
-                                Console.ResetColor();
 
-                            }
-                            while (user != null)
+                        if (user != null)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Client {user.UserName} connected: {client?.Client.RemoteEndPoint}");
+                            Console.WriteLine($"{user.UserName} -- Online");
+                            Console.ResetColor();
+
+                            OnlineUsers(users);
+
+                            while (client!.Connected)
                             {
-                                
-                                var stream1 = client.GetStream();
-                                reader = new BinaryReader(stream1);
                                 var message = reader.ReadString();
                                 Console.ForegroundColor = ConsoleColor.Yellow;
                                 Console.WriteLine($"{user.UserName} :-> {message}");
                                 Console.ResetColor();
+
                                 if (message.Trim() == "exit")
                                 {
                                     break;
                                 }
                             }
                         }
-                        finally
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                    }
+                    finally
+                    {
+                        if (user != null)
                         {
-                            if (user != null)
-                            {
-                                user.IsOnline = false;
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"{user.UserName} -- {((user.IsOnline) ? "Online" : "Ofline")}");
-                                JsonSerializer(users);
-                                Console.ResetColor();
-                            }
-                            client.Close();
+                            user.IsOnline = false;
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"{user.UserName} -- Offline");
+                            Console.ResetColor();
+
+                            tcpClients.Remove(client);
+                            OnlineUsers(users);
+                            JsonSerializerUsers(users);
                         }
-                        
-
-                    });
-
-                    Task.WaitAll(read);
+                        client?.Close();
+                    }
                 });
+            }
+        }
 
-
+        
+        private static void OnlineUsers(Users users)
+        {
+            string list_Online_User = "";
+            foreach (var item1 in users.users)
+            {
+                if (item1.IsOnline)
+                {
+                    list_Online_User += $"{item1.UserName} >> Online\n";
+                }
             }
 
-
-
+            foreach (var item2 in tcpClients.ToArray())
+            {
+                try
+                {
+                    var stream = item2.GetStream();
+                    var w = new BinaryWriter(stream);
+                    w.Write($"\n>>Online Users<<\n{list_Online_User}");
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                }
+            }
         }
     }
 }
