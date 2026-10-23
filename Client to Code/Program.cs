@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
-namespace Praktika_Server
+namespace Praktika_CLIENT
 {
     internal class Program
     {
